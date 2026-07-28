@@ -1,12 +1,18 @@
-import traceback
-
-from flask import Flask, g, request
+from flask import Flask, request
+from werkzeug.exceptions import HTTPException
 
 from pq_sdk.client import PQClient
+from pq_sdk.hooks import install_hook
 
 
 class FlaskIntegration:
-    """Flask integration that captures 500 errors automatically.
+    """Flask integration that captures ALL unhandled exceptions automatically.
+
+    Covers:
+      - View exceptions (teardown_request with exception)
+      - 500 status responses (after_request check)
+      - Startup crashes (via sys.excepthook)
+      - Background threads (via threading.excepthook)
 
     Usage:
         from pq_sdk.integrations.flask import FlaskIntegration
@@ -22,6 +28,8 @@ class FlaskIntegration:
             "base_url": "http://localhost:8000",
         })
     """
+
+    _hook_installed = False
 
     def __init__(self, app=None, client=None, settings=None):
         if client:
@@ -42,18 +50,22 @@ class FlaskIntegration:
     def init_app(self, app):
         app.extensions["pq_sdk"] = self.client
 
-        @app.errorhandler(500)
-        def handle_500(error):
-            self.client.capture_error(
-                message=f"{request.method} {request.path} returned 500",
-                error_type="ServerError",
-                page=str(request.url),
-                extra={"status_code": 500},
-            )
-            return "Internal Server Error", 500
+        # Install sys.excepthook + threading.excepthook once
+        if not FlaskIntegration._hook_installed:
+            install_hook(self.client)
+            FlaskIntegration._hook_installed = True
+
+        @app.teardown_request
+        def _pq_teardown(exc):
+            if exc is not None and not isinstance(exc, HTTPException):
+                # Only capture real exceptions, not HTTP errors (4xx/5xx are handled by Flask)
+                self.client.capture_exception(
+                    page=str(request.url) if request else "unknown",
+                    extra={"method": request.method if request else "unknown"},
+                )
 
         @app.after_request
-        def after_request(response):
+        def _pq_after_request(response):
             if response.status_code >= 500:
                 self.client.capture_error(
                     message=f"{request.method} {request.path} returned {response.status_code}",
@@ -62,11 +74,3 @@ class FlaskIntegration:
                     extra={"status_code": response.status_code},
                 )
             return response
-
-        @app.teardown_request
-        def teardown_request(exc):
-            if exc is not None:
-                self.client.capture_exception(
-                    page=str(request.url),
-                    extra={"method": request.method, "path": request.path},
-                )

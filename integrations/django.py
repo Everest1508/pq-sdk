@@ -1,4 +1,5 @@
 from pq_sdk.client import PQClient
+from pq_sdk.hooks import install_hook
 
 
 def get_client_from_django_settings():
@@ -22,7 +23,13 @@ def get_client_from_django_settings():
 
 
 class DjangoMiddleware:
-    """Django middleware that captures 500 errors automatically.
+    """Django middleware that captures ALL unhandled exceptions automatically.
+
+    Covers:
+      - View exceptions (process_exception)
+      - 500 status responses
+      - Management commands, celery tasks, shell (via sys.excepthook)
+      - Background threads (via threading.excepthook)
 
     Add to MIDDLEWARE in settings.py:
         "pq_sdk.integrations.django.DjangoMiddleware",
@@ -35,9 +42,17 @@ class DjangoMiddleware:
         }
     """
 
+    _hook_installed = False
+
     def __init__(self, get_response):
         self.get_response = get_response
         self.client = get_client_from_django_settings()
+        self.environment = getattr(self.client, "_environment", "production")
+
+        # Install sys.excepthook + threading.excepthook once
+        if not DjangoMiddleware._hook_installed:
+            install_hook(self.client, environment=self.environment)
+            DjangoMiddleware._hook_installed = True
 
     def __call__(self, request):
         response = self.get_response(request)
@@ -45,7 +60,7 @@ class DjangoMiddleware:
             self.client.capture_error(
                 message=f"{request.method} {request.path} returned {response.status_code}",
                 error_type="ServerError",
-                environment=getattr(self.client, "_environment", "production"),
+                environment=self.environment,
                 page=str(request.build_absolute_uri()),
                 extra={
                     "status_code": response.status_code,
@@ -57,7 +72,7 @@ class DjangoMiddleware:
 
     def process_exception(self, request, exception):
         self.client.capture_exception(
-            environment=getattr(self.client, "_environment", "production"),
+            environment=self.environment,
             page=str(request.build_absolute_uri()),
             extra={
                 "method": request.method,

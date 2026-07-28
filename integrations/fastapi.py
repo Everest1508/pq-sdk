@@ -1,12 +1,17 @@
-import traceback
-
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from pq_sdk.client import PQClient
+from pq_sdk.hooks import install_hook
 
 
 class FastAPIMiddleware(BaseHTTPMiddleware):
-    """FastAPI/Starlette middleware that captures 500 errors automatically.
+    """FastAPI/Starlette middleware that captures ALL unhandled exceptions automatically.
+
+    Covers:
+      - Request exceptions (try/except in dispatch)
+      - 500 status responses
+      - Background tasks, startup/shutdown (via sys.excepthook)
+      - Background threads (via threading.excepthook)
 
     Usage:
         from pq_sdk.integrations.fastapi import FastAPIMiddleware
@@ -23,6 +28,8 @@ class FastAPIMiddleware(BaseHTTPMiddleware):
         })
     """
 
+    _hook_installed = False
+
     def __init__(self, app, client=None, settings=None):
         super().__init__(app)
         if client:
@@ -37,6 +44,11 @@ class FastAPIMiddleware(BaseHTTPMiddleware):
         else:
             raise ValueError("Provide either 'client' or 'settings' to FastAPIMiddleware")
 
+        # Install sys.excepthook + threading.excepthook once
+        if not FastAPIMiddleware._hook_installed:
+            install_hook(self.client)
+            FastAPIMiddleware._hook_installed = True
+
     async def dispatch(self, request, call_next):
         try:
             response = await call_next(request)
@@ -48,7 +60,7 @@ class FastAPIMiddleware(BaseHTTPMiddleware):
                     extra={"status_code": response.status_code},
                 )
             return response
-        except Exception as exc:
+        except Exception:
             self.client.capture_exception(
                 page=str(request.url),
                 extra={"method": request.method, "path": request.url.path},
