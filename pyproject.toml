@@ -9,6 +9,9 @@ description = "Python SDK for the PQ Platform — error tracking, feedback, and 
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
+authors = [
+    { name = "Everest1508" },
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -20,6 +23,11 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Everest1508/pq-sdk"
+Repository = "https://github.com/Everest1508/pq-sdk"
+Issues = "https://github.com/Everest1508/pq-sdk/issues"
 
 [project.optional-dependencies]
 django = ["django>=3.2"]
