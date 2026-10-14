@@ -7,12 +7,12 @@ Zero dependencies. Works with Django, FastAPI, Flask, or any Python app.
 ## Install
 
 ```bash
-pip install pq-sdk
+pip install pq-befu
 
 # Or with framework extras
-pip install "pq-sdk[django]"
-pip install "pq-sdk[fastapi]"
-pip install "pq-sdk[flask]"
+pip install "pq-befu[django]"
+pip install "pq-befu[fastapi]"
+pip install "pq-befu[flask]"
 ```
 
 ## Quick Start
